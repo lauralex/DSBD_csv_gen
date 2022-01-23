@@ -170,17 +170,16 @@ class CsvGenConsumer(GenericConsumer):
                     with io.StringIO(newline='') as str_buf:
                         self.parsing_to_csv(bet_data, str_buf)
 
-                        async def sequential_finish():
-                            await producers.bet_data_finish_producer.produce(msg.key(), 'success', headers=msg.headers())
-                            await producers.csv_gen_producer.produce(msg.key(), str_buf.read(), headers=msg.headers())
+                        async def concurrent_finish():
+                            await producers.csv_gen_producer.produce(msg.key(), str_buf.getvalue(), headers=msg.headers())
 
-                        asyncio.run_coroutine_threadsafe(sequential_finish(), loop=self._loop).result()
+                        asyncio.run_coroutine_threadsafe(concurrent_finish(), loop=self._loop).result(20)
                     self._consumer.commit(msg)
                 else:
                     logging.warning(f'Null value for the message: {msg.key()}')
                     self._consumer.commit(msg)
             except Exception as exc:
-                logging.error(exc)
+                logging.exception('')
                 try:
                     self._consumer.commit(msg)
                 except:
