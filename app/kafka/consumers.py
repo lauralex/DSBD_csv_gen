@@ -3,19 +3,18 @@ import csv
 import io
 import logging
 import threading
-import uuid
 from abc import abstractmethod, ABC
-
 from confluent_kafka import DeserializingConsumer
 from confluent_kafka.schema_registry.json_schema import JSONDeserializer
 from confluent_kafka.serialization import StringDeserializer
 
 import app.kafka.producers as producers
 from app.models import BetDataList, BetData
+import app.settings as config
 
 
 class GenericConsumer(ABC):
-    bootstrap_servers = 'broker:29092'
+    bootstrap_servers = config.broker_settings.broker
 
     @property
     @abstractmethod
@@ -96,7 +95,7 @@ class CsvGenConsumer(GenericConsumer):
 
     @property
     def topic(self):
-        return 'csv_gen'
+        return 'csv-gen'
 
     @property
     def schema(self):

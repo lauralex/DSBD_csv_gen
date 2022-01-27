@@ -8,11 +8,12 @@ from confluent_kafka.schema_registry.json_schema import JSONSerializer
 from confluent_kafka.serialization import StringSerializer
 
 from app.models import BetDataList
+import app.settings as config
 
 
 class GenericProducer(ABC):
-    bootstrap_servers = 'broker:29092'
-    schema_registry_conf = {'url': 'http://schema-registry:8081'}
+    bootstrap_servers = config.broker_settings.broker
+    schema_registry_conf = {'url': config.broker_settings.schema_registry}
 
     # bootstrap_servers = 'localhost:9092'
     # schema_registry_conf = {'url': 'http://localhost:8081'}
@@ -67,7 +68,7 @@ class GenericProducer(ABC):
 
 
 class CsvGenProducer(GenericProducer):
-    topic = 'csv_gen_reply'
+    topic = 'csv-gen-reply'
 
     def model_to_dict(self, obj: BetDataList, ctx):
         return None
@@ -94,7 +95,7 @@ class CsvGenProducer(GenericProducer):
 
 
 class BetDataFinishProducer(GenericProducer):
-    topic = 'bet_data_finish'
+    topic = 'bet-data-finish'
 
     def model_to_dict(self, obj, ctx):
         return None
