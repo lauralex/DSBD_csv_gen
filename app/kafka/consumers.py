@@ -11,6 +11,7 @@ from confluent_kafka.serialization import StringDeserializer
 import app.kafka.producers as producers
 from app.models import BetDataList, BetData
 import app.settings as config
+from app.utils.advanced_scheduler import async_repeat_deco
 
 
 class GenericConsumer(ABC):
@@ -83,7 +84,7 @@ class CsvGenConsumer(GenericConsumer):
 
     @property
     def group_id(self):
-        return 'my_group'
+        return 'my_group_csv_gen'
 
     @property
     def auto_offset_reset(self):
@@ -170,7 +171,8 @@ class CsvGenConsumer(GenericConsumer):
                         self.parsing_to_csv(bet_data, str_buf)
 
                         async def concurrent_finish():
-                            await producers.csv_gen_producer.produce(msg.key(), str_buf.getvalue(), headers=msg.headers())
+                            await producers.csv_gen_producer.produce(msg.key(), str_buf.getvalue(),
+                                                                     headers=msg.headers())
 
                         asyncio.run_coroutine_threadsafe(concurrent_finish(), loop=self._loop).result(20)
                     self._consumer.commit(msg)
@@ -193,9 +195,13 @@ csv_gen_consumer: CsvGenConsumer
 
 
 def init_consumers(client=None):
-    global csv_gen_consumer
-    csv_gen_consumer = CsvGenConsumer(asyncio.get_running_loop())
-    csv_gen_consumer.consume_data()
+    @async_repeat_deco(3, 3, always_reschedule=True)
+    async def init_csv_gen_consumer(_):
+        global csv_gen_consumer
+        csv_gen_consumer = CsvGenConsumer(asyncio.get_running_loop())
+        csv_gen_consumer.consume_data()
+
+    asyncio.run_coroutine_threadsafe(init_csv_gen_consumer('csv_gen_consumer'), loop=asyncio.get_running_loop())
 
 
 def close_consumers():
