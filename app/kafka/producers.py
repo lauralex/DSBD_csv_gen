@@ -8,11 +8,13 @@ from confluent_kafka.schema_registry.json_schema import JSONSerializer
 from confluent_kafka.serialization import StringSerializer
 
 from app.models import BetDataList
+import app.settings as config
+from app.utils.advanced_scheduler import async_repeat_deco
 
 
 class GenericProducer(ABC):
-    bootstrap_servers = 'broker:29092'
-    schema_registry_conf = {'url': 'http://schema-registry:8081'}
+    bootstrap_servers = config.broker_settings.broker
+    schema_registry_conf = {'url': config.broker_settings.schema_registry}
 
     # bootstrap_servers = 'localhost:9092'
     # schema_registry_conf = {'url': 'http://localhost:8081'}
@@ -67,7 +69,7 @@ class GenericProducer(ABC):
 
 
 class CsvGenProducer(GenericProducer):
-    topic = 'csv_gen_reply'
+    topic = 'csv-gen-reply'
 
     def model_to_dict(self, obj: BetDataList, ctx):
         return None
@@ -94,7 +96,7 @@ class CsvGenProducer(GenericProducer):
 
 
 class BetDataFinishProducer(GenericProducer):
-    topic = 'bet_data_finish'
+    topic = 'bet-data-finish'
 
     def model_to_dict(self, obj, ctx):
         return None
@@ -125,11 +127,20 @@ bet_data_finish_producer: BetDataFinishProducer
 
 
 def init_producers():
-    global csv_gen_producer, bet_data_finish_producer
-    csv_gen_producer = CsvGenProducer(asyncio.get_running_loop(), normal_prod=True)
-    bet_data_finish_producer = BetDataFinishProducer(asyncio.get_running_loop(), normal_prod=True)
-    csv_gen_producer.produce_data()
-    bet_data_finish_producer.produce_data()
+    @async_repeat_deco(3, 3, always_reschedule=True)
+    async def init_csv_gen_producer(_):
+        global csv_gen_producer
+        csv_gen_producer = CsvGenProducer(asyncio.get_running_loop(), normal_prod=True)
+        csv_gen_producer.produce_data()
+
+    @async_repeat_deco(3, 3, always_reschedule=True)
+    async def init_betdata_finish_producer(_):
+        global bet_data_finish_producer
+        bet_data_finish_producer = BetDataFinishProducer(asyncio.get_running_loop(), normal_prod=True)
+        bet_data_finish_producer.produce_data()
+
+    asyncio.run_coroutine_threadsafe(init_csv_gen_producer('csv_gen_producer'), loop=asyncio.get_running_loop())
+    asyncio.run_coroutine_threadsafe(init_betdata_finish_producer('betdata_finish_producer'), loop=asyncio.get_running_loop())
 
 
 def close_producers():

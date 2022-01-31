@@ -3,19 +3,19 @@ import csv
 import io
 import logging
 import threading
-import uuid
 from abc import abstractmethod, ABC
-
 from confluent_kafka import DeserializingConsumer
 from confluent_kafka.schema_registry.json_schema import JSONDeserializer
 from confluent_kafka.serialization import StringDeserializer
 
 import app.kafka.producers as producers
 from app.models import BetDataList, BetData
+import app.settings as config
+from app.utils.advanced_scheduler import async_repeat_deco
 
 
 class GenericConsumer(ABC):
-    bootstrap_servers = 'broker:29092'
+    bootstrap_servers = config.broker_settings.broker
 
     @property
     @abstractmethod
@@ -84,7 +84,7 @@ class CsvGenConsumer(GenericConsumer):
 
     @property
     def group_id(self):
-        return 'my_group'
+        return 'my_group_csv_gen'
 
     @property
     def auto_offset_reset(self):
@@ -96,7 +96,7 @@ class CsvGenConsumer(GenericConsumer):
 
     @property
     def topic(self):
-        return 'csv_gen'
+        return 'csv-gen'
 
     @property
     def schema(self):
@@ -170,17 +170,17 @@ class CsvGenConsumer(GenericConsumer):
                     with io.StringIO(newline='') as str_buf:
                         self.parsing_to_csv(bet_data, str_buf)
 
-                        async def sequential_finish():
-                            await producers.bet_data_finish_producer.produce(msg.key(), 'success', headers=msg.headers())
-                            await producers.csv_gen_producer.produce(msg.key(), str_buf.read(), headers=msg.headers())
+                        async def concurrent_finish():
+                            await producers.csv_gen_producer.produce(msg.key(), str_buf.getvalue(),
+                                                                     headers=msg.headers())
 
-                        asyncio.run_coroutine_threadsafe(sequential_finish(), loop=self._loop).result()
+                        asyncio.run_coroutine_threadsafe(concurrent_finish(), loop=self._loop).result(20)
                     self._consumer.commit(msg)
                 else:
                     logging.warning(f'Null value for the message: {msg.key()}')
                     self._consumer.commit(msg)
             except Exception as exc:
-                logging.error(exc)
+                logging.exception('')
                 try:
                     self._consumer.commit(msg)
                 except:
@@ -195,9 +195,13 @@ csv_gen_consumer: CsvGenConsumer
 
 
 def init_consumers(client=None):
-    global csv_gen_consumer
-    csv_gen_consumer = CsvGenConsumer(asyncio.get_running_loop())
-    csv_gen_consumer.consume_data()
+    @async_repeat_deco(3, 3, always_reschedule=True)
+    async def init_csv_gen_consumer(_):
+        global csv_gen_consumer
+        csv_gen_consumer = CsvGenConsumer(asyncio.get_running_loop())
+        csv_gen_consumer.consume_data()
+
+    asyncio.run_coroutine_threadsafe(init_csv_gen_consumer('csv_gen_consumer'), loop=asyncio.get_running_loop())
 
 
 def close_consumers():
