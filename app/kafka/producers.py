@@ -95,35 +95,7 @@ class CsvGenProducer(GenericProducer):
         return result_fut
 
 
-class BetDataFinishProducer(GenericProducer):
-    topic = 'bet-data-finish'
-
-    def model_to_dict(self, obj, ctx):
-        return None
-
-    @property
-    def schema(self):
-        return None
-
-    def produce(self, id, value, headers) -> asyncio.Future:
-        result_fut = self._loop.create_future()
-
-        def delivery_report(err, msg):
-            """ Called once for each message produced to indicate delivery result.
-                Triggered by poll() or flush(). """
-            if err is not None:
-                print('Message delivery failed: {}'.format(err))
-                self._loop.call_soon_threadsafe(result_fut.set_exception, KafkaException(err))
-            else:
-                print('Message delivered to {} [{}]'.format(msg.topic(), msg.partition()))
-                self._loop.call_soon_threadsafe(result_fut.set_result, msg)
-
-        self._producer.produce(topic=self.topic, key=id, value=value, on_delivery=delivery_report, headers=headers)
-        return result_fut
-
-
 csv_gen_producer: CsvGenProducer
-bet_data_finish_producer: BetDataFinishProducer
 
 
 def init_producers():
@@ -140,9 +112,7 @@ def init_producers():
         bet_data_finish_producer.produce_data()
 
     asyncio.run_coroutine_threadsafe(init_csv_gen_producer('csv_gen_producer'), loop=asyncio.get_running_loop())
-    asyncio.run_coroutine_threadsafe(init_betdata_finish_producer('betdata_finish_producer'), loop=asyncio.get_running_loop())
 
 
 def close_producers():
     csv_gen_producer.close()
-    bet_data_finish_producer.close()
